@@ -1,0 +1,109 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Large Video Datasets & Model Artifacts
+# Keep data folder structure via .gitkeep, but ignore actual video datasets
+data/ubfc_rppg/*
+!data/ubfc_rppg/.gitkeep
+!data/ubfc_rppg/README.md
+
+data/faceforensics_c23/*
+!data/faceforensics_c23/.gitkeep
+!data/faceforensics_c23/README.md
+
+data/injected_samples/*
+!data/injected_samples/.gitkeep
+!data/injected_samples/README.md
+
+# Video / Large binary formats
+*.mp4
+*.avi
+*.mkv
+*.mov
+*.ffv1
+*.yuv
+*.h264
+*.h265
+*.pkl
+*.joblib
+*.npy
+*.npz
+
+# Outputs & Reports
+outputs/
+results/
+logs/
+*.log
