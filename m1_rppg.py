@@ -168,7 +168,7 @@ def extract_chrom(rgb_traces: np.ndarray, fs: float = 30.0, win_sec: float = 1.6
 
     step = win_samples // 2
     if step <= 0:
-        raise ValueError("Step must be a positive number")
+        raise ValueError("Step must be a positive number AND greater than 0")
 
     pulse_sum = np.zeros(len(rgb_traces))
     weight_sum = np.zeros(len(rgb_traces))
@@ -217,6 +217,11 @@ def extract_chrom(rgb_traces: np.ndarray, fs: float = 30.0, win_sec: float = 1.6
 # ==========================================
 
 def extract_pos(rgb_traces: np.ndarray, fs: float = 30.0, win_sec: float = 1.6) -> np.ndarray:
+    rgb_traces = validate_rgb_traces(rgb_traces, fs)
+
+    if not np.isfinite(win_sec) or win_sec <= 0:
+        raise ValueError("Window duration must be positive and finite")
+
     win_samples = int(round(win_sec * fs))
 
     if win_samples < 2:
@@ -225,6 +230,9 @@ def extract_pos(rgb_traces: np.ndarray, fs: float = 30.0, win_sec: float = 1.6) 
         raise ValueError("Video is too short for a POS window")
 
     step = win_samples // 2
+
+    if step <= 0:
+        raise ValueError("Step must be a positive number AND greater than zero")
 
     pulse_sum = np.zeros(len(rgb_traces))
     weight_sum = np.zeros(len(rgb_traces))
@@ -244,9 +252,17 @@ def extract_pos(rgb_traces: np.ndarray, fs: float = 30.0, win_sec: float = 1.6) 
         G = window[:, 1]
         B = window[:, 2]
 
-        R_norm = (R / np.mean(R)) - 1
-        G_norm = (G / np.mean(G)) - 1
-        B_norm = (B / np.mean(B)) - 1
+        mean_R = np.mean(R)
+        mean_G = np.mean(G)
+        mean_B = np.mean(B)
+
+        if min(abs(mean_R), abs(mean_G), abs(mean_B)) < 1e-8:
+            raise ValueError("RGB channel mean is too close to zero")
+
+        R_norm = (R / mean_R) - 1
+        G_norm = (G / mean_G) - 1
+        B_norm = (B / mean_B) - 1
+
         S1 = G_norm - B_norm
         S2 = -2 * R_norm + G_norm + B_norm
 
@@ -277,15 +293,21 @@ def extract_pos(rgb_traces: np.ndarray, fs: float = 30.0, win_sec: float = 1.6) 
 
 def estimate_bpm_fft(pulse: np.ndarray, fs: float = 30.0) -> float:
 
-    if len(pulse) == 0:
-        raise ValueError("Pulse signal cannot be empty")
+    pulse = signal_failsafe(pulse)
+
+    if not np.isfinite(fs) or fs <= 0:
+        raise ValueError("Sampling frequency must be positive and finite")
+
+    if fs <= 6.0:
+        raise ValueError("Sampling frequency is too low for the physiological range")
 
     window = np.hanning(len(pulse))
     windowed_pulse = pulse * window
 
+    n_fft = len(pulse) * 4
 
-    frequencies = np.fft.rfftfreq(len(pulse), d=1/fs)
-    magnitudes = np.abs(np.fft.rfft(windowed_pulse))
+    frequencies = np.fft.rfftfreq(n_fft, d=1/fs)
+    magnitudes = np.abs(np.fft.rfft(windowed_pulse, n = n_fft))
     valid = (frequencies >= 0.7) & (frequencies <= 3.0)
 
     if not np.any(valid):
@@ -301,11 +323,10 @@ def estimate_bpm_fft(pulse: np.ndarray, fs: float = 30.0) -> float:
 
     return float(bpm)
 
-# ==========================================
-# FACE RECOGNITION
-# ==========================================
 
 # ==========================================
+# FACE RECOGNITION USING MEDIA PIPE
+
 # FACE LANDMARKER INITIALIZATION
 # ==========================================
 
@@ -434,7 +455,7 @@ def test_face_detection(video_path, model_path):
         # ==========================================
 
         # Construct the forehead ROI mask
-        forehead_roi_mask = create_roi_mask(
+        forehead_roi_mask = create_forehead_roi_mask(
             landmarks,
             forehead_boundaries,
             width,
@@ -487,7 +508,7 @@ def test_face_detection(video_path, model_path):
         # ==========================================
 
         # Construct the first cheek ROI
-        first_cheek_mask = create_first_cheek_roi_mask(
+        first_cheek_mask = create_left_cheek_roi_mask(
             landmarks,
             lower_cheek_points[1],
             face_oval_indices,
@@ -496,7 +517,7 @@ def test_face_detection(video_path, model_path):
         )
 
         # Construct the second cheek ROI
-        second_cheek_mask = create_second_cheek_roi_mask(
+        second_cheek_mask = create_right_cheek_roi_mask(
             landmarks,
             lower_cheek_points[0],
             face_oval_indices,
@@ -567,10 +588,16 @@ def test_face_detection(video_path, model_path):
 # ROI HELPER FUNCTIONS
 # ==========================================
 
+# ==========================================
+# TIMESTAMP CALCULATION
+# ==========================================
 def calculate_timestamp(frame_index, fps):
     time_stamp = (frame_index / fps) * 1000
     return int(time_stamp)
 
+# ==========================================
+# LOWER CHEEK BOUNDARY CALCULATION
+# ==========================================
 def calculate_lower_cheek_boundary(eye_points, mouth_points, ratio=0.55):
     lower_eye_points = eye_points[[3, 7]]
     mouth_corner_points = mouth_points[[0, 1]]
@@ -582,7 +609,12 @@ def calculate_lower_cheek_boundary(eye_points, mouth_points, ratio=0.55):
 
     return np.round(lower_boundary).astype(np.int32)
 
-def create_first_cheek_roi_mask(
+# ==========================================
+# FIRST CHEEK ROI MASK CREATION
+# ==========================================
+
+# LEFT Cheek from the recorder's perspective
+def create_left_cheek_roi_mask(
     landmarks,
     lower_anchor,
     face_oval_indices,
@@ -684,7 +716,12 @@ def create_first_cheek_roi_mask(
 
     return cheek_mask
 
-def create_second_cheek_roi_mask(
+# ==========================================
+# SECOND CHEEK ROI MASK CREATION
+# ==========================================
+
+# Right Cheek from the recorder's perspective
+def create_right_cheek_roi_mask(
     landmarks,
     lower_anchor,
     face_oval_indices,
@@ -787,7 +824,10 @@ def create_second_cheek_roi_mask(
 
     return cheek_mask
 
-def create_roi_mask(landmarks, boundaries, width, height):
+# ==========================================
+# FOREHEAD ROI MASK CREATION
+# ==========================================
+def create_forehead_roi_mask(landmarks, boundaries, width, height):
 
     # Extract upper forehead boundary landmarks
     upper_points = get_landmark_points(
@@ -826,128 +866,6 @@ def create_roi_mask(landmarks, boundaries, width, height):
 
     return roi_mask
 
-# ==========================================
-# TESTING FUNCTIONS FOR MAIN RUNS
-# ==========================================
-
-#Global rgb_trace for testing
-rgb_traces = np.array([
-    [120.0, 130.0, 110.0],
-    [121.0, 131.0, 111.0],
-    [122.0, 132.0, 112.0],
-    [123.0, 133.0, 113.0]
-])
-
-def signal_testing():
-    invalid_signals = [
-        np.array([]),
-        np.array([[1.0, 2.0], [3.0, 4.0]]),
-        np.array([1.0, 2.0, np.nan, 4.0]),
-        np.array([1.0, 2.0, np.inf, 4.0])
-    ]
-
-    for invalid_sig in invalid_signals:
-        try:
-            filtered = filter_rppg(invalid_sig, fs)
-            return filtered
-        except ValueError as error:
-            print(f"Caught expected error: {error}")
-
-def sample_testing():
-    invalid_fs_values = [0, -30, np.nan, np.inf]
-
-    for invalid_fs in invalid_fs_values:
-        try:
-            filter_rppg(sig, fs=invalid_fs)
-        except ValueError as error:
-            print(f"fs={invalid_fs} -> Caught expected error: {error}")
-
-def green_testing():
-    invalid_rgb_traces = [
-        np.array([]),
-        np.array([[1.0, 2.0], [3.0, 4.0]]),
-        np.array([[1.0, np.nan, 3.0]]),
-        np.array([[1.0, np.inf, 3.0]])
-    ]
-
-    for invalid_rgb in invalid_rgb_traces:
-        try:
-            extract_green(invalid_rgb, fs)
-        except ValueError as error:
-            print("Caught expected error:", error)
-
-def green_sample_testing():
-
-    # Replace invalid_fs with 30 for short signal error
-    invalid_fs_values = [0, -30, np.nan, np.inf]
-
-    rgb_traces = np.array([
-        [120.0, 130.0, 110.0],
-        [121.0, 131.0, 111.0],
-        [122.0, 132.0, 112.0],
-        [123.0, 133.0, 113.0]
-    ])
-
-    for invalid_fs in invalid_fs_values:
-        try:
-            extract_green(rgb_traces, invalid_fs)
-        except ValueError as error:
-            print(f"fs={invalid_fs} -> Caught expected error: {error}")
-
-def chrom_testing(fs):
-    invalid_rgb_traces = [
-        np.array([]),                                  # Empty array
-        np.array([[1.0, 2.0], [3.0, 4.0]]),           # Wrong shape
-        np.array([[1.0, np.nan, 3.0]]),              # NaN
-        np.array([[1.0, np.inf, 3.0]])               # Infinity
-    ]
-
-    for invalid_rgb in invalid_rgb_traces:
-        try:
-            extract_chrom(invalid_rgb, fs)
-        except ValueError as error:
-            print("Caught expected error:", error)
-
-def chrom_freq_testing():
-    invalid_fs_values = [0, -30, np.nan, np.inf]
-    rgb_traces = np.array([
-        [120.0, 130.0, 110.0],
-        [121.0, 131.0, 111.0],
-        [122.0, 132.0, 112.0],
-        [123.0, 133.0, 113.0]
-    ])
-
-    for invalid_fs in invalid_fs_values:
-        try:
-            extract_chrom(rgb_traces, invalid_fs)
-        except ValueError as error:
-            print(f"fs={invalid_fs} -> Caught expected error: {error}")
-
-def chrom_window_duration_testing():
-    invalid_win_sec = [0, -1.0, np.nan, np.inf]
-
-    for invalid_win in invalid_win_sec:
-        try:
-            extract_chrom(rgb_traces, fs, invalid_win)
-        except ValueError as error:
-            print(f"win_sec={invalid_win} -> Caught expected error: {error}")
-
-def chrom_window_length_testing():
-    short_win_values = [0.01, 0.1, 0.5]
-
-    for short_win in short_win_values:
-        try:
-            extract_chrom(rgb_traces, fs, short_win)
-        except ValueError as error:
-            print(f"win_sec={short_win} -> Caught expected error: {error}")
-
-def chrom_video_length_testing():
-    short_rgb_traces = np.random.rand(20, 3) * 255
-
-    try:
-        extract_chrom(short_rgb_traces, fs, 1.6)
-    except ValueError as error:
-        print("Caught expected error:", error)
 
 # ==========================================
 # MAIN RUNS
@@ -964,69 +882,6 @@ if __name__ == "__main__":
     model_path = r"models/face_landmarker.task"
     # test_face_detection(video_path, model_path)
 
-    fs = 30.0
-    duration = 10
 
-    t = np.arange(0, duration, 1/fs)
-
-    sig = (
-        120
-        + 2 * np.sin(2 * np.pi * 1.2 * t)
-        + 0.5 * np.sin(2 * np.pi * 5 * t)
-    )
-
-    # ==============================
-    # SIGNAL VALIDATION TESTING
-    # ==============================
-
-    # signal_test = signal_testing()
-
-    # ==============================
-    # INVALID SAMPLING FREQUENCY TESTS
-    # ==============================
-
-    # sample_test = sample_testing()
-
-    # ==============================
-    # EXTRACT_GREEN VALIDATION TESTING
-    # ==============================
-
-    # green_test = green_testing()
-
-    # ==============================
-    # EXTRACT_GREEN SAMPLING FREQUENCY TESTING
-    # ==============================
-
-    # green_sample_test = green_sample_testing()
-
-    # ==============================
-    # CHROM RGB VALIDATION TESTING
-    # ==============================
-
-    # chrom_test = chrom_testing(fs)
-
-    # ==============================
-    # CHROM SAMPLING FREQUENCY TESTING
-    # ==============================
-
-    # chrom_freq_test = chrom_freq_testing()
-
-    # ==============================
-    # CHROM WINDOW DURATION TESTING
-    # ==============================
-
-    # chrom_window_test = chrom_window_testing()
-
-    # ==============================
-    # CHROM WINDOW LENGTH TESTING
-    # ==============================
-
-    # chrom_window_length_test = chrom_window_length_testing()
-
-    # ==============================
-    # CHROM VIDEO LENGTH TESTING
-    # ==============================
-
-    chrom_video_length_test = chrom_video_length_testing()
 
     # run_m1()
