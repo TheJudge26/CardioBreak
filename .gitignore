@@ -107,3 +107,7 @@ outputs/
 results/
 logs/
 *.log
+
+
+# Pretrained model files
+*.task

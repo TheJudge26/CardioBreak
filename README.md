@@ -28,6 +28,9 @@ python m2_detector.py
 python m3_attack.py
 python m4_eval.py
 
+#Run failsafe tests script
+python failsafe_tests.py
+
 # Live webcam demo
 python demo.py
 ```
